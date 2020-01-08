@@ -5,22 +5,28 @@ function T = Lyapunov(orbit)
 
 
 
-% calculate input matrix G 
+%% calculate input matrix G 
 
 G = input_matrix (orbit);
 
-% calculate error 
+
+%% calculate error 
 
 Kerr = error_function (orbit);
 
-% % calculate gain
-% 
+%% calculate gain
+
 % K = gains (orbit);
 
 
 %% calculate thrust vector 
 
 T = - G' * Kerr';
+
+ 
+
+
+
 
 
 

@@ -29,7 +29,7 @@ close all
 profile on
 tic
 
-global const Cnm Snm AuxParam eopdata swdata SOLdata DTCdata APdata PC init_oe master_oe current_orbit K
+global const Cnm Snm AuxParam eopdata swdata SOLdata DTCdata APdata PC init_oe master_oe current_orbit K Perigee_flag Apogee_flag AN_flag DN_flag
 
 SAT_Const
 constants
@@ -149,7 +149,7 @@ AuxParam.ThrustMag = 1;
 
 Mjd0   = Mjd_UTC;
 Step   = 60;   % [s]
-N_Step = 1440; % 24 hours
+N_Step = 2880; % 48 hours
 
 
 %% shorten PC, eopdata, swdata, Cnm, and Snm
@@ -167,94 +167,270 @@ Snm = Snm(1:AuxParam.n+1,1:AuxParam.n+1);
 
 y0 = Y0;
 sum = -60;
+sumC = -60;
 cta = 0;
 k =0;
 
+y0C = Y0;
+
 [sm_y0, ecc_y0, RA_y0, Inclination_y0, ArgPer_y0, TrueA_y0, T_y0, b_y0, p_y0, r_y0, h_y0 ] = Orbital_Elem(y0);
 
-% set initial orbit 
+initial_oe_vector = [sm_y0, ecc_y0, RA_y0, Inclination_y0, ArgPer_y0, TrueA_y0, T_y0, b_y0, p_y0, r_y0, h_y0 ];
+
+%% set initial orbit 
 init_oe = [sm_y0, ecc_y0, RA_y0, Inclination_y0, ArgPer_y0, TrueA_y0, T_y0,  b_y0, p_y0, r_y0, h_y0];
 
-% set master orbit 
-master_oe = [ sm_y0, 0 , RA_y0 ,  Inclination_y0 , ArgPer_y0, TrueA_y0, T_y0,  b_y0, p_y0, r_y0, h_y0];
+%% set master orbit 
+master_oe = [ sm_y0+50 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
 
-
-% % % % % % Master = MasterOrbit ; 
-% % % % % % Master.Value = [sm, ecc, RA, Inclination, ArgPer, TrueA, T];
-
-csm = sm_y0;
+%% set gain matrix
 K = [1, 1, 1, 1, 1];
 
+%% Set position flags 
+Apogee_flag = 0; 
+Perigee_flag = 0; 
 
-% desired ascension 
-ascension = 100;  
+%% set burn arc counter 
+counter = 0;
+
+%% set satellites number 
+sat1 = 1; 
+chief = 1; 
+
+%% set states of ascension 
+phase_ctrl = 0;
+descend = 0; 
+phase_value = 0;
+correction_down = 0;
+correction_up = 0;
+phase_flag = 0;
 
 
-% calculate mean semi major-axis 
-mean_sm = (7095+sm_y0)/2;
+%% phase correction and maintenance flags 
 
-% propagation
-% separation of the main propagation in smaller steps
+perigee_flag = 0;
+apogee_flag = 1;
+
+%% // PROPAGATION LOOP //
+
 for i = 0:Step:N_Step*Step
     stp = 1;
     n_stp = 60;
     
-    %% OLD
-% %     pta = cta;
-% %     psm = csm;
+    %% measure orbital elements - SAT 1
+    [sm, ecc, RA, Inclination, ArgPer, TrueA, T,  b, p, r, h] = Orbital_Elem(y0);   
     
-    %% measure orbital elements
-    [sm, ecc, RA, Inclination, ArgPer, TrueA, T,  b, p, r, h] = Orbital_Elem(y0);
+    %% measure orbital elements - CHIEF 
+    [smC, eccC, RAC, InclinationC, ArgPerC, TrueAC, TC,  bC, pC, rC, hC] = Orbital_Elem(y0C); 
     
-    
-    %% estimate the current orbit // input for input_matrix()
+    %% estimate the current orbit // input for input_matrix() // SAT - 1 
     current_orbit = [sm, ecc, RA, Inclination, ArgPer, TrueA, T,  b, p, r, h];
-    
-    
-%% OLD
-% %     cta = TrueA;
-% %     csm = sm;
-% %     cta
-% %     sm
-    
-    % apply control 
-% %     flag = Altitude_Control(sm,cta,pta,k);
-% %     if flag == 1
-% %         k = k + 1;
-% %     end
-% %     k;
-% %     
-    %% calculate Eph for 1 min
+        
+ %% SAT - 1 PROPAGATION 
+
+    if sat1 == 1
+    % calculate Eph for 1 min - SAT 1
     Sub_Eph = Ephemeris(y0,n_stp,stp);
     vector = Sub_Eph(end,:);
     Eph(i/60+1,1) = vector(1) + sum ; 
     Eph(i/60+1,2:7) = vector(2:7);
-    
-    
-    %% OLD
-% %     if i >= 60
-% %         
-% %         delta_sm = csm - psm;
-% %         % calculate thrust per step
-% %         % check decrease of thrust power
-% %         reduce_flag = calculate_thrust(AuxParam.mass, delta_sm , mean_sm , sum+60);
-% %         reduce_flag
-% %         AuxParam.ThrustMag
-% %     
-% %     end
-       
-%% 
+    % Timing - SAT 1 
     t = Eph(i/60+1,1);
     y0 = vector(2:7)';
-    
-    % timing sum
     sum = sum + vector(1);
+    end
     
-    %% calculate gains 
-if i > 60 
-    K = gains (current_orbit, sum)
+%% CHIEF PROPAGATION 
+    
+    if chief == 1 
+    AuxParam.Thrust = 0; 
+    % calculate Eph for 1 min - CHIEF
+    Sub_Eph = Ephemeris(y0C,n_stp,stp);
+    vectorC = Sub_Eph(end,:);
+    EphC(i/60+1,1) = vectorC(1) + sumC ; 
+    EphC(i/60+1,2:7) = vectorC(2:7);
+    % Timing - CHIEF
+    tC = EphC(i/60+1,1);
+    y0C = vectorC(2:7)';
+    sumC = sumC + vectorC(1);   
+    AuxParam.Thrust = 1;
+    end 
+    
+   t = i/60+1;
+   t  
+    
+    
+    
+    
+    %% POSITION IN ORBIT 
+    
+   % check perigee 
+   if TrueA < 30 || TrueA > 330
+       Perigee_flag = 1;
+   else 
+       Perigee_flag = 0;
+   end
+   
+   % check apogee 
+   if TrueA < 210 && TrueA > 150
+       Apogee_flag = 1; 
+   else 
+       Apogee_flag = 0; 
+   end 
+   
+   % print apogee/perigee flag 
+   Perigee_flag;
+   Apogee_flag; 
+    
+%% MANEUVER - PHASES - ASCENSION - SAT -1
+   if descend == 0
+    % ascension in apogee 
+    if TrueA < 200 && TrueA > 160 && sm > sm_y0+40 && sm < sm_y0+70 
+            master_oe = [ sm_y0+100 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
+    end
+    % ascension in perigee 
+    if (TrueA < 20 || TrueA > 340) && (sm > sm_y0+80 && sm < sm_y0+120)
+            master_oe = [ sm_y0+150 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
+    end
+    % ascension in apogee 
+    if TrueA < 200 && TrueA > 160 && sm > sm_y0+130 && sm < sm_y0+170
+            master_oe = [ sm_y0+200 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
+    end
+   end
+   
+%% MANEUVER - PHASES - DESCEND - SAT - 1 
+    
+if phase_flag == 1  
+    
+    descend = 1; 
+    phase_ctrl = 1;
+    
+      % descend in apogee
+    if TrueA < 200 && TrueA > 160 && sm > sm_y0+195 && sm < sm_y0+220  
+     master_oe = [ sm_y0+175 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
+    end
+    
+    % descend in perigee
+    if (TrueA < 20 || TrueA > 340) && sm > sm_y0+170 && sm < sm_y0+180
+     master_oe = [ sm_y0+150 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
+    end
+    
+     % descend in apogee
+    if TrueA < 200 && TrueA > 160 && sm > sm_y0+140 && sm < sm_y0+160 
+     master_oe = [ sm_y0+125 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
+    end
+    
+     % descend in perigee / to correct arg of perigee
+    if (TrueA < 20 || TrueA > 340) && sm > sm_y0+120 && sm < sm_y0+130 
+     master_oe = [ sm_y0+100 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
+     phase_ctrl = 1;
+    end   
+    
+    % descend in apogee
+    if TrueA < 200 && TrueA > 160 && sm > sm_y0+90 && sm < sm_y0+110
+     master_oe = [ sm_y0+75 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
+    end
+    
+     % descend in perigee / to correct arg of perigee
+    if (TrueA < 20 || TrueA > 340) && sm > sm_y0+70 && sm < sm_y0+80 
+     master_oe = [ sm_y0+50 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
+     phase_ctrl = 1;
+    end   
+    
+    % descend in apogee
+    if TrueA < 200 && TrueA > 20 && sm > sm_y0+45 && sm < sm_y0+55
+     master_oe = [ sm_y0+25 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
+    end
+    
+     % descend in perigee / to correct arg of perigee
+    if (TrueA < 20 || TrueA > 340) && sm > sm_y0+20 && sm < sm_y0+30  
+     master_oe = [ sm_y0 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
+     
+    end 
+   
+    
 end
+
+%% PHASE - ANGLE ESTIMATION SAT - 1 - CHIEF
+    
+    % Calculate Phase 
+    Delta_Theta = TrueAC + ArgPerC - ArgPer - TrueA;
+    
+    if Delta_Theta < 0 
+        Theta1 = TrueAC + 360; 
+        Delta_Theta = Theta1 + ArgPerC - ArgPer - TrueA; 
+    end
+    
+    phase_value =  Delta_Theta;
+    
+    % phase flag 
+    if phase_value > 95 && phase_value < 290
+       phase_flag = 1; 
+    end 
+    
+    % save values for plotting
+    phase(i/60+1) = Delta_Theta; 
+    
+    % print phase values and semi major axis 
+    Delta_Theta   
+    sm
+    
+%% APPLY CONTROL PHASE BAND 
+    if phase_ctrl == 1
+    if sm < sm_y0+20 && sm > sm_y0-20 
+        if  phase_value < 119
+            % need to keep eccentricity constant 
+            % propel program 
+            % 1. perigee - apogee 
+            % 2. apogee - perigee 
+            % 3. ...
+            
+            if apogee_flag == 1
+            if (TrueA < 20 || TrueA > 340) 
+            master_oe = [ sm_y0+5 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
+            perigee_flag = 1;
+            apogee_flag = 0;
+            correction_up = 1;
+            end
+            end
+            
+            
+            if perigee_flag == 1
+            if TrueA < 200 && TrueA > 160       
+            master_oe = [ sm_y0+5 ,  ecc_y0 , RA_y0 ,  Inclination_y0 , ArgPer_y0 , TrueA_y0, T_y0 ,  b_y0, p_y0, r_y0, h_y0];
+            perigee_flag = 0;
+            apogee_flag = 1;
+            correction_up = 1;
+            end
+            end
+        end
+    end
+    end
+    
+%% GAINS - SAT - 1
+
+    if i > 60 
+     K = gains (current_orbit, sum);
+    end
+
+%% THRUST - SAT - 1
+
+    T = Lyapunov (current_orbit);
+    if Perigee_flag == 1
+    Thrust_vector(i/60+1,1) = T(1);
+    Thrust_vector(i/60+1,3) = T(3);
+    else 
+    Thrust_vector(i/60+1,1) = 0;
+    Thrust_vector(i/60+1,2) = 0;
+    Thrust_vector(i/60+1,3) = 0;
+    end
+
+
+    
+
 end
+  
+
 
 fid = fopen('SatelliteStates.txt','w');
 for i=1:N_Step+1
@@ -264,6 +440,8 @@ for i=1:N_Step+1
 end
 fclose(fid);
 
+%% EPHEMERIS IN ECEF CHIEF & SAT - 1 
+
 [n, m] = size(Eph);
 Eph_ecef = zeros(n,m);
 for i=1:n
@@ -271,10 +449,17 @@ for i=1:n
     Eph_ecef(i,2:7) = ECI2ECEF(Mjd0+Eph_ecef(i,1)/86400, Eph(i,2:7)); 
 end
 
+[n, m] = size(EphC);
+EphC_ecef = zeros(n,m);
+for i=1:n
+    EphC_ecef(i,1) = EphC(i,1);
+    EphC_ecef(i,2:7) = ECI2ECEF(Mjd0+EphC_ecef(i,1)/86400, EphC(i,2:7)); 
+end
+
 % % % % % % True_EnvisatStates
 % % % % % % dd = True_Eph-Eph_ecef(:,2:7);
 
-% Plot orbit in ECI reference
+%% Plot orbit in ECI reference
 figure(1)
 plot3(Eph(:,2),Eph(:,3),Eph(:,4),'o-r')
 grid;

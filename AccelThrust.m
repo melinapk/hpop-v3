@@ -1,7 +1,6 @@
 function a = AccelThrust(Y,mass,d) 
 
-global AuxParam current_orbit
-
+global AuxParam current_orbit 
 %Calculation of DCM for LVLH conversion.
 
 QXx = LVLHTransformation(Y);
@@ -28,7 +27,7 @@ QXx = LVLHTransformation(Y);
 %% call Lyapunov for thrust force calculation
 
 T = Lyapunov (current_orbit); 
- 
+
 % Tt = [0, T(2), 0]';
 
 %% Transformation of Thrust vector to ECI

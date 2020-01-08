@@ -37,7 +37,7 @@ master_orbit = [sm_master, ecc_master, inc_master, RA_master, ArgPer_master];
 
 %% set the deltas
 
-err = orbit_current - master_orbit 
+err = orbit_current - master_orbit ;
 
 
 K = gains (orbit, 1);

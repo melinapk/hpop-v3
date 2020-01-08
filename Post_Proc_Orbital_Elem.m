@@ -1,4 +1,4 @@
-function [a ecc RA Inclination ArgPer TrueA ] = Post_Proc_Orbital_Elem(Eph,n)
+function [a ecc RA Inclination ArgPer TrueA beta ] = Post_Proc_Orbital_Elem(Eph,n)
 
 %{
 % This function computes the classical orbital elements (coe)
@@ -119,6 +119,13 @@ TrueA(i) = TAnom;
 
 %(a < 0 for a hyperbola):
 a(i) = h^2/mu/(1 - e^2);
+
+%% semi - minor axis 
+
+beta2(i)  = a(i)^2 * (1-ecc(i)^2) ; 
+
+beta(i) = sqrt(beta2(i));
+
 
 
 end 

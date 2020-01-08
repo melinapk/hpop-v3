@@ -1,4 +1,4 @@
-function ans = plotElements (a, ecc, RA ,Inclination,ArgPer, TrueA)
+function ans = plotElements (a, ecc, RA ,Inclination,ArgPer, TrueA,beta)
 
 figure(3)
 plot(ecc)
@@ -23,6 +23,10 @@ title('Semi-major axis')
 figure(8)
 plot(ArgPer)
 title('Argument of Perigee')
+
+figure(9)
+plot(beta)
+title('semi-minor axis')
 
 ans = 1; 
 end

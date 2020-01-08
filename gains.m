@@ -41,7 +41,9 @@ Kma = (sm^2*ecc^2*h^2)/(4*b^2*p^2)*(1 - ecc^2/4)*(1/dt);
 
 %% set gain vector 
 
-K = [ 0 ; 500 ; 0 ; 0 ; 0];
+K = [ 10^(-4) ; 0 ; 400 ; 0 ; 0];
+
+%K = [Ka, Ke, Ki, Kra, Karg];
 
 
 

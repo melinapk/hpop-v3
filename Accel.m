@@ -24,7 +24,7 @@
 %--------------------------------------------------------------------------
 function dY = Accel(t, Y)
 
-global const AuxParam eopdata current_orbit
+global const AuxParam eopdata current_orbit Perigee_flag Apogee_flag AN_flag DN_flag
 
 
 MJD_UTC = AuxParam.Mjd_UTC+t/86400;
@@ -108,13 +108,13 @@ if (AuxParam.drag)
     a = a + AccelDrag(dens,Y(1:3),Y(4:6),NPB,AuxParam.area_drag,AuxParam.mass,AuxParam.Cd,Omega);
 end
 
-%Thrust Impulse
-
+%% Apply thrust
 if (AuxParam.Thrust) 
     a = a + AccelThrust(Y,AuxParam.mass,AuxParam.direction);
 end
 
-% Relativistic Effects
+
+%%  Relativistic Effects
 if (AuxParam.Relativity)
     a = a + Relativity(Y(1:3),Y(4:6));
 end
